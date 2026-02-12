@@ -1,0 +1,8 @@
+pixiv_user_id = 676767676
+pixiv_phpsessid = "676767676_n9K3KdVnN402LaE3Fckf3kS2mJ34Rg0P"
+mongodb_uri = "mongodb://localhost/flazxiv"
+bookmark_tag_mappings = [
+	["vtuber", ["VTuber", "バーチャルYouTuber"]],
+	["touhou", ["東方", "東方Project"]],
+	["zenless_zone_zero", ["ZenlessZoneZero", "ゼンゼロ", "ゼンレスゾーンゼロ", "绝区零", "젠레스"]],
+]

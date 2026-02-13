@@ -26,8 +26,14 @@ pub async fn sync_bookmarks() -> Result<()> {
     loop {
         let mut page = 1;
         let mut next_page = true;
+        let mut recent_pixiv_bookmark_ids = vec![];
+        let mut new_bookmarks = vec![];
 
         while next_page {
+            if page != 1 {
+                info!("Checking page {page}... This may happen if bookmarks weren't synced in a while.");
+            }
+
             let bookmarks = match PixivBookmarks::get_page(page, "").await {
                 Ok(bookmarks) => bookmarks,
                 Err(error) => {
@@ -35,6 +41,10 @@ pub async fn sync_bookmarks() -> Result<()> {
                     break;
                 },
             };
+
+            if page == 1 {
+                recent_pixiv_bookmark_ids.extend(bookmarks.body.works.iter().map(|bookmark| bookmark.id.clone()));
+            }
 
             // If somehow we're at the point where the current page is empty, let it start from the first page again (no need to break since it'll skip the loop anyway)
             if bookmarks.body.works.is_empty() {
@@ -49,10 +59,8 @@ pub async fn sync_bookmarks() -> Result<()> {
                         if existing_bookmark.is_some() {
                             // This page has an existing bookmark, so we won't bother inserting the current bookmark or looking through older pages
                             next_page = false;
-                        } else if let Err(error) = mongodb.bookmarks.insert_one(bookmark.clone()).await {
-                            error!("An error occurred while trying to insert bookmark {bookmark_id}: {error:?}");
                         } else {
-                            info!("New bookmark inserted: {bookmark_id}");
+                            new_bookmarks.push(bookmark.clone());
                         }
                     },
                     Err(error) => {
@@ -64,11 +72,26 @@ pub async fn sync_bookmarks() -> Result<()> {
                 }
             }
 
-            // Check for removed bookmarks by comparing the recent local bookmarks with pixiv's after everything is synced
-            // This wouldn't be reliable if I removed some old bookmark that wasn't included in the list of recent ones, but whatever
-            // We only do this check if the page we grabbed was the latest one and we aren't checking an older page
-            if page == 1 && !next_page {
-                let recent_bookmarks = match mongodb.bookmarks.find(None, 0, PIXIV_BOOKMARKS_PER_PAGE, PaginationSort::Descending).await {
+            if next_page {
+                page += 1;
+            }
+        }
+
+        if !new_bookmarks.is_empty() {
+            let ids = new_bookmarks.iter().map(|bookmark| bookmark.id.clone()).collect::<Vec<String>>();
+
+            if let Err(error) = mongodb.bookmarks.insert_many(new_bookmarks.clone()).await {
+                error!("An error occurred while trying to insert bookmarks: {error:?}");
+            } else {
+                info!("{} new {} inserted: {}", ids.len(), if ids.len() == 1 { "bookmark" } else { "bookmarks" }, ids.join(", "));
+            }
+        }
+
+        // Check for removed bookmarks by comparing the recent local bookmarks with pixiv's after everything is synced
+        // This wouldn't be reliable if I removed some old bookmark that wasn't included in the list of recent ones, but whatever
+        if !recent_pixiv_bookmark_ids.is_empty() {
+            let recent_local_bookmarks =
+                match mongodb.bookmarks.find(None, 0, recent_pixiv_bookmark_ids.len() as i64, PaginationSort::Descending).await {
                     Ok(recent_bookmarks) => recent_bookmarks,
                     Err(error) => {
                         error!("An error occurred while trying to get bookmarks: {error:?}");
@@ -76,18 +99,15 @@ pub async fn sync_bookmarks() -> Result<()> {
                     },
                 };
 
-                let removed = recent_bookmarks.iter().filter(|bookmark| !bookmarks.body.works.iter().any(|entry| entry.id == bookmark.id));
+            let to_remove = recent_local_bookmarks.iter().filter(|bookmark| !recent_pixiv_bookmark_ids.contains(&bookmark.id));
 
-                for bookmark in removed {
-                    if let Err(error) = mongodb.bookmarks.delete(&bookmark.id).await {
-                        error!("An error occurred while trying to delete bookmark {}: {error:?}", bookmark.id);
-                    } else {
-                        info!("Deleted bookmark {} because it was removed from recents.", bookmark.id);
-                    }
+            for bookmark in to_remove {
+                if let Err(error) = mongodb.bookmarks.delete(&bookmark.id).await {
+                    error!("An error occurred while trying to delete bookmark {}: {error:?}", bookmark.id);
+                } else {
+                    info!("Deleted bookmark {} because it was removed from recents.", bookmark.id);
                 }
             }
-
-            page += 1;
         }
 
         sleep(SYNC_COOLDOWN_DURATION);

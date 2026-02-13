@@ -3,6 +3,7 @@ use crate::{
     routes::bookmarks::PaginationSort,
 };
 use anyhow::Result;
+use chrono::Utc;
 use futures::TryStreamExt;
 use mongodb::{
     Collection,
@@ -58,6 +59,19 @@ impl Bookmarks {
     }
 
     pub async fn insert_many(&self, bookmarks: Vec<PixivBookmarkPageBodyWork>) -> Result<()> {
+        // The bookmarks should be reversed since pixiv sorts them by newest to oldest
+        // We want the opposite for an accurate bookmark sync date for the initial database population (because we are looping from the oldest page to the newest page during the init)
+        // We do this because pixiv does not include bookmark addition date, but they do sort bookmarks by the order they were added
+        let bookmarks = bookmarks
+            .into_iter()
+            .rev()
+            .map(|mut bookmark| {
+                // This is needed for sorting by added date in the local database
+                bookmark.sync_date = Some(Utc::now().to_rfc3339());
+                bookmark
+            })
+            .collect::<Vec<PixivBookmarkPageBodyWork>>();
+
         self.collection.insert_many(bookmarks).await?;
         Ok(())
     }

@@ -1,6 +1,5 @@
 use crate::{CONFIG, REQWEST, USER_AGENT};
 use anyhow::Result;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_with::{VecSkipError, serde_as};
 use std::fmt::Display;
@@ -27,24 +26,7 @@ impl PixivBookmarks {
             .send()
             .await?;
 
-        let mut json = res.json::<Self>().await?;
-
-        // The bookmarks should be reversed since pixiv sorts them by newest to oldest
-        // We want the opposite for an accurate bookmark sync date for the initial database population (because we are looping from the oldest page to the newest page during the init)
-        // We do this because pixiv does not include bookmark addition date, but they do sort bookmarks by the order they were added
-        json.body.works = json
-            .body
-            .works
-            .into_iter()
-            .rev()
-            .map(|mut artwork| {
-                // This is needed for sorting by added date in the local database
-                artwork.sync_date = Some(Utc::now().to_rfc3339());
-                artwork
-            })
-            .collect();
-
-        Ok(json)
+        Ok(res.json().await?)
     }
 }
 

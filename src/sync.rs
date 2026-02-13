@@ -1,7 +1,7 @@
 use crate::{
     MONGODB,
     mongodb::MongoDB,
-    pixiv::bookmarks::{PIXIV_BOOKMARKS_PER_PAGE, PixivBookmarks},
+    pixiv::{PIXIV_BOOKMARKS_PER_PAGE, PixivBookmarks},
     routes::bookmarks::PaginationSort,
 };
 use anyhow::{Result, anyhow};

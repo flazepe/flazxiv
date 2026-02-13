@@ -1,35 +1,51 @@
-use crate::pixiv::bookmark_tags::PixivBookmarkTag;
+use crate::mongodb::BookmarkTag;
 use anyhow::Result;
 use futures::TryStreamExt;
-use mongodb::{Collection, bson::doc, options::FindOptions};
+use mongodb::{Collection, bson::doc, options::FindOneAndUpdateOptions};
 use std::fmt::Display;
 
 #[derive(Debug)]
 pub struct BookmarkTags {
-    collection: Collection<PixivBookmarkTag>,
+    collection: Collection<BookmarkTag>,
 }
 
 impl BookmarkTags {
-    pub fn new(collection: Collection<PixivBookmarkTag>) -> Self {
+    pub fn new(collection: Collection<BookmarkTag>) -> Self {
         Self { collection }
     }
 
-    pub async fn get<T: Display>(&self, id: T) -> Result<Option<PixivBookmarkTag>> {
-        Ok(self.collection.find_one(doc! { "_id": id.to_string() }).await?)
+    pub async fn get<T: Display>(&self, id: T) -> Result<Option<BookmarkTag>> {
+        let id = id.to_string().to_lowercase();
+        Ok(self.collection.find_one(doc! { "_id": id }).await?)
     }
 
-    pub async fn find(&self) -> Result<Vec<PixivBookmarkTag>> {
-        let find_options = FindOptions::builder().sort(doc! { "cnt": -1 }).build();
-        Ok(self.collection.find(doc! {}).with_options(find_options).await?.try_collect().await?)
+    pub async fn find(&self) -> Result<Vec<BookmarkTag>> {
+        Ok(self.collection.find(doc! {}).sort(doc! { "total": -1 }).limit(50).await?.try_collect().await?)
     }
 
-    pub async fn delete_all(&self) -> Result<()> {
-        self.collection.delete_many(doc! {}).await?;
+    pub async fn increment<T: Display>(&self, id: T) -> Result<()> {
+        let options = FindOneAndUpdateOptions::builder().upsert(true).build();
+
+        self.collection
+            .find_one_and_update(
+                doc! { "_id": id.to_string().to_lowercase() },
+                doc! { "$set": { "name": id.to_string() }, "$inc": { "total": 1 } },
+            )
+            .with_options(options)
+            .await?;
+
         Ok(())
     }
 
-    pub async fn insert_many(&self, tags: Vec<PixivBookmarkTag>) -> Result<()> {
-        self.collection.insert_many(tags).await?;
+    pub async fn decrement<T: Display>(&self, id: T) -> Result<()> {
+        let id = id.to_string().to_lowercase();
+        self.collection.find_one_and_update(doc! { "_id": id }, doc! { "$inc": { "total": -1 }}).await?;
+        Ok(())
+    }
+
+    pub async fn delete<T: Display>(&self, id: T) -> Result<()> {
+        let id = id.to_string().to_lowercase();
+        self.collection.delete_one(doc! { "_id": id }).await?;
         Ok(())
     }
 }

@@ -10,7 +10,7 @@ use config::Config;
 use mongodb::MongoDB;
 use reqwest::Client;
 use std::sync::{LazyLock, OnceLock};
-use sync::{bookmark_tags::sync_bookmark_tags, bookmarks::sync_bookmarks};
+use sync::sync_bookmarks;
 use tokio::{main, net::TcpListener, spawn};
 use tracing_subscriber::fmt;
 
@@ -25,7 +25,6 @@ async fn main() -> Result<()> {
     fmt::init();
 
     MONGODB.set(MongoDB::new().await?).expect("Could not set MongoDB");
-    spawn(sync_bookmark_tags());
     spawn(sync_bookmarks());
 
     let app = Router::new()

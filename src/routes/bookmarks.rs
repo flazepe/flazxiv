@@ -1,7 +1,6 @@
-use crate::{CONFIG, MONGODB, pixiv::bookmarks::PixivBookmarkPageBody, routes::Response};
+use crate::{CONFIG, MONGODB, pixiv::PixivBookmarkPageBody, routes::Response};
 use axum::{Json, extract::Query};
-use mongodb::bson::{Document, Regex, doc};
-use regex_syntax::escape;
+use mongodb::bson::{Document, doc};
 use serde::Deserialize;
 
 pub async fn handler(query: Query<Pagination>) -> Json<Response<PixivBookmarkPageBody>> {
@@ -10,27 +9,17 @@ pub async fn handler(query: Query<Pagination>) -> Json<Response<PixivBookmarkPag
     let mut filter = None;
 
     if !tags.is_empty() {
-        let mut regex_lists = vec![];
+        let mut tag_lists = vec![];
 
         for tag in tags {
             if let Some(pixiv_tags) = CONFIG.bookmark_tag_mappings.get(&tag) {
-                regex_lists.push(
-                    pixiv_tags
-                        .iter()
-                        .map(|pixiv_tag| Regex { pattern: format!("^{}$", escape(pixiv_tag)), options: "i".into() })
-                        .collect::<Vec<Regex>>(),
-                );
+                tag_lists.push(pixiv_tags.iter().map(|pixiv_tag| pixiv_tag.to_lowercase()).collect::<Vec<String>>());
             } else {
-                let is_exact_match = tag.starts_with('^') && tag.ends_with('$');
-
-                regex_lists.push(vec![Regex {
-                    pattern: if is_exact_match { format!("^{}$", escape(tag.trim_matches(['^', '$']))) } else { escape(&tag) },
-                    options: "i".into(),
-                }]);
+                tag_lists.push(vec![tag]);
             }
         }
 
-        filter = Some(doc! { "$and": regex_lists.iter().map(|regexes| doc! { "tags": { "$in": regexes } }).collect::<Vec<Document>>() });
+        filter = Some(doc! { "$and": tag_lists.iter().map(|list| doc! { "tags": { "$in": list } }).collect::<Vec<Document>>() });
     }
 
     let mongodb = MONGODB.get().unwrap();

@@ -1,11 +1,12 @@
 use crate::{MONGODB, mongodb::BookmarkTag, routes::Response};
-use axum::Json;
+use axum::{Json, extract::Query};
+use serde::Deserialize;
 use tracing::error;
 
-pub async fn handler() -> Json<Response<Vec<BookmarkTag>>> {
+pub async fn handler(query: Query<TagQuery>) -> Json<Response<Vec<BookmarkTag>>> {
     let mongodb = MONGODB.get().unwrap();
 
-    match mongodb.bookmarks.tags.find().await {
+    match mongodb.bookmarks.tags.find(&query.query).await {
         Ok(mut bookmark_tags) => {
             let total = mongodb.bookmarks.count(None).await.unwrap_or(0);
             bookmark_tags.insert(0, BookmarkTag { id: "".into(), name: "All".into(), total });
@@ -16,4 +17,10 @@ pub async fn handler() -> Json<Response<Vec<BookmarkTag>>> {
             Json(Response::Error(format!("{error:?}")))
         },
     }
+}
+
+#[derive(Deserialize)]
+pub struct TagQuery {
+    #[serde(default)]
+    query: String,
 }

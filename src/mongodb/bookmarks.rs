@@ -88,9 +88,9 @@ impl Bookmarks {
                 let Some(bookmark_tag) = self.tags.get(&tag).await? else { continue };
 
                 if bookmark_tag.total - 1 == 0 {
-                    self.tags.delete(&id).await?;
+                    self.tags.delete(&bookmark_tag.id).await?;
                 } else {
-                    self.tags.decrement(&id).await?;
+                    self.tags.decrement(&bookmark_tag.id).await?;
                 }
             }
         }

@@ -26,5 +26,5 @@ pub struct BookmarkTag {
     pub id: String,
 
     pub name: String,
-    pub total: i64,
+    pub total: u64,
 }

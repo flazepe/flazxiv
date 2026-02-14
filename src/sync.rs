@@ -119,7 +119,7 @@ pub async fn insert_all_bookmarks(mongodb: &MongoDB) -> Result<()> {
     let total_pages = ((first_page.body.total as f64) / (PIXIV_BOOKMARKS_PER_PAGE as f64)).ceil() as i64;
     let mut page = total_pages;
 
-    while page != 0 {
+    while page != 1 {
         info!("Inserting page {page}/{total_pages}...");
 
         let bookmarks = PixivBookmarks::get_page(page, "").await?;
@@ -128,6 +128,8 @@ pub async fn insert_all_bookmarks(mongodb: &MongoDB) -> Result<()> {
         page -= 1;
         sleep(INSERT_ALL_COOLDOWN_DURATION);
     }
+
+    mongodb.bookmarks.insert_many(first_page.body.works).await?;
 
     Ok(())
 }

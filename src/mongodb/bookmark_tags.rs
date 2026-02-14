@@ -25,18 +25,22 @@ impl BookmarkTags {
     }
 
     pub async fn find<T: Display>(&self, query: T) -> Result<Vec<BookmarkTag>> {
+        let mut filter = doc! {};
+
         let query = query.to_string();
 
-        let filter = if query.is_empty() {
-            doc! {}
-        } else {
-            doc! {
-                "_id": Regex {
-                    pattern: escape(&query),
-                    options: "i".into(),
-                },
+        if !query.is_empty() {
+            let mut conditions = vec![];
+
+            for tag in query.split_whitespace() {
+                conditions.push(doc! { "_id": tag.to_lowercase() });
+                conditions.push(doc! { "_id": Regex { pattern: escape(tag), options: "i".into() } });
             }
-        };
+
+            if !conditions.is_empty() {
+                filter = doc! { "$or": conditions };
+            }
+        }
 
         Ok(self.collection.find(filter).sort(doc! { "total": -1 }).limit(50).await?.try_collect().await?)
     }

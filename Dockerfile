@@ -1,4 +1,4 @@
-FROM rust:1-alpine AS builder
+FROM rust:1-alpine
 WORKDIR /flazxiv
 COPY . .
 RUN apk update && apk upgrade

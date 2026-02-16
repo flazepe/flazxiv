@@ -17,10 +17,13 @@ impl PixivBookmarks {
         let offset = (page - 1) * PIXIV_BOOKMARKS_PER_PAGE;
 
         let res = REQWEST
-            .get(format!(
-                "https://www.pixiv.net/ajax/user/{}/illusts/bookmarks?offset={offset}&limit={PIXIV_BOOKMARKS_PER_PAGE}&rest=show&tag={tag}",
-                CONFIG.pixiv_user_id,
-            ))
+            .get(format!("https://www.pixiv.net/ajax/user/{}/illusts/bookmarks", CONFIG.pixiv_user_id))
+            .query(&[
+                ("offset", offset.to_string()),
+                ("limit", PIXIV_BOOKMARKS_PER_PAGE.to_string()),
+                ("rest", "show".into()),
+                ("tag", tag.to_string()),
+            ])
             .header("user-agent", USER_AGENT)
             .header("cookie", format!("PHPSESSID={}", CONFIG.pixiv_phpsessid))
             .send()

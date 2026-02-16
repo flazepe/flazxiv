@@ -2,7 +2,7 @@ use crate::{CONFIG, REQWEST, USER_AGENT};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_with::{VecSkipError, serde_as};
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 // pixiv's hard limit is 100
 pub const PIXIV_BOOKMARKS_PER_PAGE: i64 = 100;
@@ -88,4 +88,57 @@ pub struct PixivBookmarkPageBodyWorkBookmarkData {
 pub struct PixivBookmarkPageBodyWorkTitleCaptionTranslation {
     pub work_title: Option<String>,
     pub work_caption: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PixivTags {
+    pub body: PixivTagsBody,
+}
+
+impl PixivTags {
+    pub async fn search<T: Display>(tag: T) -> Result<Self> {
+        let tag = tag.to_string();
+        let encoded_tag = urlencoding::encode(&tag);
+
+        // The `lang` query parameter is important to ensure the "en" property is included in the tag translations
+        let res = REQWEST.get(format!("https://www.pixiv.net/ajax/search/tags/{encoded_tag}")).query(&[("lang", "en")]).send().await?;
+        Ok(res.json().await?)
+    }
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PixivTagsBody {
+    pub breadcrumbs: PixivTagsBodyBreadcrumbs,
+    pub tag_translation: PixivTagsBodyTagTranslationWrapper,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PixivTagsBodyBreadcrumbs {
+    pub successor: Vec<PixivTagsBodyBreadcrumbsSuccessor>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PixivTagsBodyBreadcrumbsSuccessor {
+    pub tag: String,
+    pub translation: PixivTagsBodyBreadcrumbsSuccessorTranslation,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PixivTagsBodyBreadcrumbsSuccessorTranslation {
+    pub en: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum PixivTagsBodyTagTranslationWrapper {
+    // This little shit gives an empty array if there are no results
+    AnEmptyArray(),
+    // Otherwise, it gives an object which we treat as a HashMap
+    HashMap(HashMap<String, PixivTagsBodyTagTranslation>),
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PixivTagsBodyTagTranslation {
+    pub romaji: String,
 }

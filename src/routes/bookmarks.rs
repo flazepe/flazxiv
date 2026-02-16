@@ -12,20 +12,19 @@ pub async fn handler(query: Query<Pagination>) -> Json<Response<PixivBookmarkPag
         let mut tag_lists = vec![];
 
         for tag in tags {
+            let mut normalized_tags = vec![];
+
             if let Some(pixiv_tags) = CONFIG.bookmark_tag_mappings.get(&tag) {
-                tag_lists.push(pixiv_tags.iter().map(|pixiv_tag| pixiv_tag.to_lowercase()).collect::<Vec<String>>());
-                continue;
+                normalized_tags.extend(pixiv_tags.iter().map(|pixiv_tag| pixiv_tag.to_lowercase()));
             }
 
-            let resolved_bookmark_tags = mongodb.bookmarks.tags.resolve_from_name_or_id(&tag).await.unwrap_or_default();
-
-            if !resolved_bookmark_tags.iter().any(|entry| entry.id == tag || entry.name.as_ref() == Some(&tag)) {
-                tag_lists.push(vec![tag]);
+            for resolved_bookmark_tag in mongodb.bookmarks.tags.resolve_from_name_or_id(&tag).await.unwrap_or_default() {
+                normalized_tags.push(resolved_bookmark_tag.id);
             }
 
-            if !resolved_bookmark_tags.is_empty() {
-                tag_lists.push(resolved_bookmark_tags.into_iter().map(|bookmark_tag| bookmark_tag.id).collect());
-            }
+            normalized_tags.push(tag);
+
+            tag_lists.push(normalized_tags);
         }
 
         filter = Some(doc! { "$and": tag_lists.iter().map(|list| doc! { "tags": { "$in": list } }).collect::<Vec<Document>>() });

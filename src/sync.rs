@@ -9,8 +9,9 @@ use kakasi::{IsJapanese, convert, is_japanese};
 use std::{fmt::Display, thread::sleep, time::Duration};
 use tracing::{error, info};
 
-const SYNC_COOLDOWN_DURATION: Duration = Duration::from_secs(10);
-const INSERT_ALL_COOLDOWN_DURATION: Duration = Duration::from_millis(500);
+const SYNC_BOOKMARKS_COOLDOWN: Duration = Duration::from_secs(10);
+const INSERT_ALL_BOOKMARKS_COOLDOWN: Duration = Duration::from_millis(500);
+const SYNC_BOOKMARK_TAG_TRANSLATIONS_COOLDOWN: Duration = Duration::from_millis(500);
 
 pub async fn sync_bookmarks() -> Result<()> {
     let mongodb = MONGODB.get().unwrap();
@@ -111,7 +112,7 @@ pub async fn sync_bookmarks() -> Result<()> {
             }
         }
 
-        sleep(SYNC_COOLDOWN_DURATION);
+        sleep(SYNC_BOOKMARKS_COOLDOWN);
     }
 }
 
@@ -127,7 +128,7 @@ pub async fn insert_all_bookmarks(mongodb: &MongoDB) -> Result<()> {
         mongodb.bookmarks.insert_many(bookmarks.body.works).await?;
 
         page -= 1;
-        sleep(INSERT_ALL_COOLDOWN_DURATION);
+        sleep(INSERT_ALL_BOOKMARKS_COOLDOWN);
     }
 
     mongodb.bookmarks.insert_many(first_page.body.works).await?;
@@ -177,6 +178,8 @@ pub async fn sync_bookmark_tag_translations<T: Display>(tags: Vec<T>) -> Result<
 
             mongodb.bookmarks.tags.set_name(&id, new_name).await?;
         }
+
+        sleep(SYNC_BOOKMARK_TAG_TRANSLATIONS_COOLDOWN);
     }
 
     Ok(())

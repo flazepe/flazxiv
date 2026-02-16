@@ -33,8 +33,13 @@ impl BookmarkTags {
             let mut conditions = vec![];
 
             for tag in query.split_whitespace() {
-                conditions.push(doc! { "_id": tag.to_lowercase() });
-                conditions.push(doc! { "_id": Regex { pattern: escape(tag), options: "i".into() } });
+                let lowercased_tag = tag.to_lowercase();
+                conditions.push(doc! { "_id": &lowercased_tag });
+                conditions.push(doc! { "name": &lowercased_tag });
+
+                let regex_pattern = Regex { pattern: escape(tag), options: "".into() };
+                conditions.push(doc! { "_id": &regex_pattern });
+                conditions.push(doc! { "name": &regex_pattern });
             }
 
             if !conditions.is_empty() {
@@ -45,23 +50,29 @@ impl BookmarkTags {
         Ok(self.collection.find(filter).sort(doc! { "total": -1 }).limit(50).await?.try_collect().await?)
     }
 
+    pub async fn resolve_from_name_or_id<T: Display>(&self, name_or_id: T) -> Result<Vec<BookmarkTag>> {
+        let name_or_id = name_or_id.to_string().to_string();
+        let filter = doc! { "$or": [{ "_id": &name_or_id }, { "name": name_or_id }] };
+        Ok(self.collection.find(filter).sort(doc! { "total": -1 }).limit(50).await?.try_collect().await?)
+    }
+
     pub async fn increment<T: Display>(&self, id: T) -> Result<()> {
+        let id = id.to_string().to_lowercase();
         let options = FindOneAndUpdateOptions::builder().upsert(true).build();
-
-        self.collection
-            .find_one_and_update(
-                doc! { "_id": id.to_string().to_lowercase() },
-                doc! { "$set": { "name": id.to_string() }, "$inc": { "total": 1 } },
-            )
-            .with_options(options)
-            .await?;
-
+        self.collection.find_one_and_update(doc! { "_id": id }, doc! { "$inc": { "total": 1 } }).with_options(options).await?;
         Ok(())
     }
 
     pub async fn decrement<T: Display>(&self, id: T) -> Result<()> {
         let id = id.to_string().to_lowercase();
         self.collection.find_one_and_update(doc! { "_id": id }, doc! { "$inc": { "total": -1 }}).await?;
+        Ok(())
+    }
+
+    pub async fn set_name<T: Display, U: Display>(&self, id: T, name: U) -> Result<()> {
+        let id = id.to_string().to_lowercase();
+        let name = name.to_string().to_lowercase();
+        self.collection.update_one(doc! { "_id": id }, doc! { "$set": { "name": name } }).await?;
         Ok(())
     }
 

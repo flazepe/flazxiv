@@ -2,6 +2,7 @@ use crate::{
     mongodb::{BookmarkTag, bookmark_tags::BookmarkTags},
     pixiv::{PIXIV_BOOKMARKS_PER_PAGE, PixivBookmarkPageBodyWork},
     routes::bookmarks::PaginationSort,
+    sync::sync_bookmark_tag_translations,
 };
 use anyhow::Result;
 use chrono::Utc;
@@ -12,6 +13,7 @@ use mongodb::{
     options::FindOptions,
 };
 use std::fmt::Display;
+use tokio::spawn;
 
 #[derive(Debug)]
 pub struct Bookmarks {
@@ -52,16 +54,30 @@ impl Bookmarks {
         };
 
         let find_options = FindOptions::builder().limit(limit).sort(sort).skip(offset).build();
-        Ok(self.collection.find(filter.into().unwrap_or_default()).with_options(find_options).await?.try_collect().await?)
-    }
+        let bookmarks = self
+            .collection
+            .find(filter.into().unwrap_or_default())
+            .with_options(find_options)
+            .await?
+            .try_collect::<Vec<PixivBookmarkPageBodyWork>>()
+            .await?;
 
-    pub async fn insert_many(&self, bookmarks: Vec<PixivBookmarkPageBodyWork>) -> Result<()> {
+        let mut tags = vec![];
+
         for bookmark in &bookmarks {
             for tag in &bookmark.tags {
-                self.tags.increment(tag).await?;
+                if !tags.contains(tag) {
+                    tags.push(tag.clone());
+                }
             }
         }
 
+        spawn(sync_bookmark_tag_translations(tags));
+
+        Ok(bookmarks)
+    }
+
+    pub async fn insert_many(&self, bookmarks: Vec<PixivBookmarkPageBodyWork>) -> Result<()> {
         // The bookmarks should be reversed since pixiv sorts them by newest to oldest
         // We want the opposite for an accurate bookmark sync date for the initial database population (because we are looping from the oldest page to the newest page during the init)
         // We do this because pixiv does not include bookmark addition date, but they do sort bookmarks by the order they were added
@@ -75,6 +91,12 @@ impl Bookmarks {
                 bookmark
             })
             .collect::<Vec<PixivBookmarkPageBodyWork>>();
+
+        for bookmark in &bookmarks {
+            for tag in &bookmark.tags {
+                self.tags.increment(tag).await?;
+            }
+        }
 
         self.collection.insert_many(bookmarks).await?;
         Ok(())

@@ -1,11 +1,12 @@
 use crate::{
     MONGODB,
     mongodb::MongoDB,
-    pixiv::{PIXIV_BOOKMARKS_PER_PAGE, PixivBookmarks},
+    pixiv::{PIXIV_BOOKMARKS_PER_PAGE, PixivBookmarks, PixivTags, PixivTagsBodyTagTranslationWrapper},
     routes::bookmarks::PaginationSort,
 };
 use anyhow::{Result, anyhow};
-use std::{thread::sleep, time::Duration};
+use kakasi::{IsJapanese, convert, is_japanese};
+use std::{fmt::Display, thread::sleep, time::Duration};
 use tracing::{error, info};
 
 const SYNC_COOLDOWN_DURATION: Duration = Duration::from_secs(10);
@@ -130,6 +131,53 @@ pub async fn insert_all_bookmarks(mongodb: &MongoDB) -> Result<()> {
     }
 
     mongodb.bookmarks.insert_many(first_page.body.works).await?;
+
+    Ok(())
+}
+
+pub async fn sync_bookmark_tag_translations<T: Display>(tags: Vec<T>) -> Result<()> {
+    let mongodb = MONGODB.get().unwrap();
+
+    for tag in tags {
+        let id = tag.to_string().to_lowercase();
+
+        let Some(bookmark_tag) = mongodb.bookmarks.tags.get(&id).await? else { continue };
+
+        if bookmark_tag.name.is_some() {
+            continue;
+        }
+
+        let pixiv_tags = match PixivTags::search(&id).await {
+            Ok(pixiv_tags) => pixiv_tags,
+            Err(error) => {
+                error!(r#"An error occurred while trying to get pixiv tag "{id}": {error:?}"#);
+                continue;
+            },
+        };
+
+        // Add all related tags (which also sometimes include the translated version of the current tag)
+        for pixiv_tag in &pixiv_tags.body.breadcrumbs.successor {
+            let new_name = pixiv_tag.translation.en.split_whitespace().collect::<Vec<&str>>().join("_");
+            mongodb.bookmarks.tags.set_name(&pixiv_tag.tag, new_name).await?;
+        }
+
+        // Add the romanized version of the current tag if it wasn't included in the breadcrumbs
+        if !pixiv_tags.body.breadcrumbs.successor.iter().any(|entry| entry.tag.to_lowercase() == id) {
+            let mut new_name = id.clone();
+
+            if let PixivTagsBodyTagTranslationWrapper::HashMap(hashmap) = pixiv_tags.body.tag_translation {
+                let romaji = hashmap.into_iter().find(|entry| entry.0.to_lowercase() == id).map(|entry| entry.1.romaji);
+
+                if let Some(romaji) = romaji {
+                    new_name = romaji;
+                } else if is_japanese(&id) == IsJapanese::True {
+                    new_name = convert(&id).romaji.split_whitespace().collect::<Vec<&str>>().join("_");
+                }
+            }
+
+            mongodb.bookmarks.tags.set_name(&id, new_name).await?;
+        }
+    }
 
     Ok(())
 }

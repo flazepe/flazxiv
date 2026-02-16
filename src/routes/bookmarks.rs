@@ -4,8 +4,8 @@ use mongodb::bson::{Document, doc};
 use serde::Deserialize;
 
 pub async fn handler(query: Query<Pagination>) -> Json<Response<PixivBookmarkPageBody>> {
+    let mongodb = MONGODB.get().unwrap();
     let tags = query.tags.to_string().to_lowercase().split_whitespace().take(5).map(|tag| tag.to_string()).collect::<Vec<String>>();
-
     let mut filter = None;
 
     if !tags.is_empty() {
@@ -14,15 +14,22 @@ pub async fn handler(query: Query<Pagination>) -> Json<Response<PixivBookmarkPag
         for tag in tags {
             if let Some(pixiv_tags) = CONFIG.bookmark_tag_mappings.get(&tag) {
                 tag_lists.push(pixiv_tags.iter().map(|pixiv_tag| pixiv_tag.to_lowercase()).collect::<Vec<String>>());
-            } else {
+                continue;
+            }
+
+            let resolved_bookmark_tags = mongodb.bookmarks.tags.resolve_from_name_or_id(&tag).await.unwrap_or_default();
+
+            if !resolved_bookmark_tags.iter().any(|entry| entry.id == tag || entry.name.as_ref() == Some(&tag)) {
                 tag_lists.push(vec![tag]);
+            }
+
+            if !resolved_bookmark_tags.is_empty() {
+                tag_lists.push(resolved_bookmark_tags.into_iter().map(|bookmark_tag| bookmark_tag.id).collect());
             }
         }
 
         filter = Some(doc! { "$and": tag_lists.iter().map(|list| doc! { "tags": { "$in": list } }).collect::<Vec<Document>>() });
     }
-
-    let mongodb = MONGODB.get().unwrap();
 
     let count = match mongodb.bookmarks.count(filter.clone()).await {
         Ok(count) => count,

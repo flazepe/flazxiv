@@ -27,15 +27,14 @@ impl BookmarkTags {
     pub async fn find<T: Display>(&self, query: T) -> Result<Vec<BookmarkTag>> {
         let mut filter = doc! {};
 
-        let query = query.to_string();
+        let query = query.to_string().to_lowercase();
 
         if !query.is_empty() {
             let mut conditions = vec![];
 
             for tag in query.split_whitespace() {
-                let lowercased_tag = tag.to_lowercase();
-                conditions.push(doc! { "_id": &lowercased_tag });
-                conditions.push(doc! { "name": &lowercased_tag });
+                conditions.push(doc! { "_id": &tag });
+                conditions.push(doc! { "name": &tag });
 
                 let regex_pattern = Regex { pattern: escape(tag), options: "".into() };
                 conditions.push(doc! { "_id": &regex_pattern });

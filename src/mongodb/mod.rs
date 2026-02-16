@@ -25,6 +25,8 @@ pub struct BookmarkTag {
     #[serde(rename(serialize = "_id"), alias = "_id")]
     pub id: String,
 
-    pub name: String,
+    #[serde(default)]
+    pub name: Option<String>,
+
     pub total: u64,
 }

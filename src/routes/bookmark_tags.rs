@@ -9,7 +9,7 @@ pub async fn handler(query: Query<TagQuery>) -> Json<Response<Vec<BookmarkTag>>>
     match mongodb.bookmarks.tags.find(&query.query).await {
         Ok(mut bookmark_tags) => {
             let total = mongodb.bookmarks.count(None).await.unwrap_or(0);
-            bookmark_tags.insert(0, BookmarkTag { id: "".into(), name: "All".into(), total });
+            bookmark_tags.insert(0, BookmarkTag { id: "".into(), name: Some("all".into()), total });
             Json(Response::Data(bookmark_tags))
         },
         Err(error) => {

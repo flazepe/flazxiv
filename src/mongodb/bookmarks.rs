@@ -12,7 +12,10 @@ use mongodb::{
     bson::{Document, doc},
     options::FindOptions,
 };
-use std::fmt::Display;
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+};
 use tokio::spawn;
 
 #[derive(Debug)]
@@ -54,7 +57,7 @@ impl Bookmarks {
         };
 
         let find_options = FindOptions::builder().limit(limit).sort(sort).skip(offset).build();
-        let bookmarks = self
+        let mut bookmarks = self
             .collection
             .find(filter.into().unwrap_or_default())
             .with_options(find_options)
@@ -62,17 +65,22 @@ impl Bookmarks {
             .try_collect::<Vec<PixivBookmarkPageBodyWork>>()
             .await?;
 
-        let mut tags = vec![];
+        let unique_tags = HashSet::<String>::from_iter(bookmarks.iter().flat_map(|bookmark| bookmark.tags.clone())).into_iter().collect();
+        let mut translated_tags = HashMap::new();
 
-        for bookmark in &bookmarks {
-            for tag in &bookmark.tags {
-                if !tags.contains(tag) {
-                    tags.push(tag.clone());
-                }
-            }
+        for tag in &unique_tags {
+            let bookmark_tags = self.tags.resolve_from_name_or_id(&tag).await.unwrap_or_default();
+            let iter =
+                bookmark_tags.into_iter().map(|bookmark_tag| (bookmark_tag.id.clone(), bookmark_tag.name.unwrap_or(bookmark_tag.id)));
+            translated_tags.extend(iter);
         }
 
-        spawn(sync_bookmark_tag_translations(tags));
+        for bookmark in &mut bookmarks {
+            let iter = bookmark.tags.iter().map(|tag| translated_tags.get(tag).unwrap_or(tag).clone());
+            bookmark.tags = HashSet::<String>::from_iter(iter).into_iter().collect();
+        }
+
+        spawn(sync_bookmark_tag_translations(unique_tags));
 
         Ok(bookmarks)
     }
